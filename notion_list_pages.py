@@ -193,3 +193,7 @@ def main(mode, parent_id, database_id, query, output, notion_token, recursive, r
         for pid in page_ids:
             f.write(pid + "\n")
     click.echo("Done.")
+
+
+if __name__ == "__main__":
+    main()
