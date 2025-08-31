@@ -1,0 +1,4 @@
+notion-client 
+requests 
+python-dotenv 
+click
