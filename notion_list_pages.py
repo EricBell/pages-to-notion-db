@@ -163,7 +163,16 @@ def main(mode, parent_id, database_id, query, output, notion_token, recursive, r
             click.echo("ERROR: could not extract parent id from the value provided", err=True)
             raise SystemExit(1)
         click.echo(f"Collecting child pages under parent {pid} (recursive={recursive})...")
-        page_ids = children_page_ids_from_parent(client, pid, recursive=recursive, rate_sleep=rate_sleep)
+        try:
+            page_ids = children_page_ids_from_parent(client, pid, recursive=recursive, rate_sleep=rate_sleep)
+        except Exception as e:
+            if "Could not find block" in str(e):
+                click.echo(f"ERROR: Cannot access block/page {pid}. This could mean:", err=True)
+                click.echo("  1. The ID is a database ID - use --mode database instead", err=True)
+                click.echo("  2. The integration doesn't have access - share the page/database with your integration", err=True)
+                click.echo("  3. The ID is incorrect - double-check the page URL", err=True)
+                raise SystemExit(1)
+            raise
     elif mode == "database":
         if not database_id:
             click.echo("ERROR: --database-id required for mode=database", err=True)
