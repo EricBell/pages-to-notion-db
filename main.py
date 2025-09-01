@@ -54,12 +54,21 @@ def fetch_all_children(block_id):
         raise RuntimeError("Notion client is not initialized; cannot fetch children.")
     children = []
     start_cursor = None
+    batch_count = 0
     while True:
-        resp = client.blocks.children.list(block_id=block_id, start_cursor=start_cursor)
+        batch_count += 1
+        print(f"  -> Fetching blocks batch {batch_count}...")
+        try:
+            resp = client.blocks.children.list(block_id=block_id, start_cursor=start_cursor)
+        except Exception as e:
+            print(f"  -> Error fetching blocks: {e}")
+            raise
         results = resp.get("results", [])
+        print(f"  -> Got {len(results)} blocks in this batch")
         for r in results:
             if r.get("has_children"):
                 r_copy = dict(r)
+                print(f"  -> Recursing into block {r['id'][:8]}...")
                 r_copy["_children"] = fetch_all_children(r["id"])
                 children.append(r_copy)
             else:
@@ -68,6 +77,7 @@ def fetch_all_children(block_id):
             break
         start_cursor = resp.get("next_cursor")
         time.sleep(RATE_SLEEP)
+    print(f"  -> Total blocks fetched: {len(children)}")
     return children
 
 
@@ -79,12 +89,36 @@ def plain_text_from_rich_text(rich_text_array):
 
 
 def convert_rich_text_item(rt):
-    new = {
-        "type": rt.get("type", "text"),
-        "text": {"content": rt.get("plain_text", "")}
-    }
-    if rt.get("href"):
-        new["text"]["link"] = {"url": rt["href"]}
+    rt_type = rt.get("type", "text")
+    
+    # Handle different rich text types
+    if rt_type == "text":
+        new = {
+            "type": "text",
+            "text": {"content": rt.get("plain_text", "")}
+        }
+        if rt.get("href"):
+            new["text"]["link"] = {"url": rt["href"]}
+    elif rt_type == "mention":
+        # Convert mentions to plain text to avoid validation issues
+        new = {
+            "type": "text", 
+            "text": {"content": rt.get("plain_text", "")}
+        }
+    elif rt_type == "equation":
+        # Convert equations to plain text
+        new = {
+            "type": "text",
+            "text": {"content": rt.get("plain_text", "")}
+        }
+    else:
+        # Fallback: convert unknown types to plain text
+        new = {
+            "type": "text",
+            "text": {"content": rt.get("plain_text", "")}
+        }
+    
+    # Add annotations if present
     annotations = rt.get("annotations", {})
     if annotations:
         new["annotations"] = {
@@ -166,7 +200,12 @@ def convert_block_for_append(block):
 def guess_title_and_date_from_page(page_id):
     if client is None:
         raise RuntimeError("Notion client is not initialized; cannot guess title/date.")
-    page = client.pages.retrieve(page_id=page_id)
+    print(f"  -> Retrieving page metadata...")
+    try:
+        page = client.pages.retrieve(page_id=page_id)
+    except Exception as e:
+        print(f"  -> Error retrieving page: {e}")
+        raise
     title = None
     date_iso = None
 
@@ -216,14 +255,55 @@ def create_database_page(title, date_iso):
         return fake_id
     if client is None:
         raise RuntimeError("Notion client is not initialized; cannot create database page.")
+    
+    print(f"  -> Creating page in database {TARGET_DB_ID}...")
+    
+    # First, try to access the database to check permissions and structure
+    try:
+        print(f"  -> Checking database access...")
+        db_info = client.databases.retrieve(database_id=TARGET_DB_ID)
+        
+        # Safely get database title
+        db_title = "Unnamed"
+        title_array = db_info.get('title', [])
+        if title_array and len(title_array) > 0:
+            db_title = title_array[0].get('plain_text', 'Unnamed')
+        print(f"  -> Database found: {db_title}")
+        
+        # Check required properties exist
+        db_props = db_info.get("properties", {})
+        required_props = ["Title", "Date", "Archived"]
+        missing_props = []
+        for prop in required_props:
+            if prop not in db_props:
+                missing_props.append(prop)
+        
+        if missing_props:
+            raise RuntimeError(f"Database missing required properties: {missing_props}. Found properties: {list(db_props.keys())}")
+            
+    except Exception as e:
+        print(f"  -> Database access error: {e}")
+        if "Could not find database" in str(e):
+            print(f"  -> TROUBLESHOOTING STEPS:")
+            print(f"     1. Verify database ID {TARGET_DB_ID} is correct")
+            print(f"     2. Share the database with your integration")
+            print(f"     3. Check the database isn't archived or deleted")
+        raise
+    
     properties = {
         "Title": {"title": [{"type": "text", "text": {"content": title}}]},
         "Date": {"date": {"start": date_iso}},
         "Archived": {"checkbox": False}
     }
     body = {"parent": {"database_id": TARGET_DB_ID}, "properties": properties}
-    resp = client.pages.create(**body)
-    return resp.get("id")
+    
+    try:
+        resp = client.pages.create(**body)
+        print(f"  -> Successfully created page: {resp.get('id')}")
+        return resp.get("id")
+    except Exception as e:
+        print(f"  -> Page creation failed: {e}")
+        raise
 
 
 def append_children_to_page(page_block_id, converted_children):
