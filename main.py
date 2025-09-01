@@ -182,6 +182,20 @@ def convert_block_for_append(block):
             base["file"] = {"type": "external", "external": {"url": file_obj["file"]["url"]}}
         else:
             base = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "[File removed - original not accessible]"}}]}}
+    elif btype == "child_page":
+        # Convert child page references to links
+        page_title = block.get("child_page", {}).get("title", "Linked Page")
+        page_id = block.get("id", "")
+        link_text = f"📄 {page_title}"
+        if page_id:
+            link_text += f" (ID: {page_id[:8]}...)"
+        base = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": link_text}}]}}
+    elif btype == "column_list":
+        # Convert column lists to dividers with text
+        base = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "--- Column Layout ---"}}]}}
+    elif btype == "column":
+        # Convert columns to plain content (children will be processed separately)
+        base = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Column:"}}]}}
     else:
         rt = None
         for key in ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"):
@@ -450,6 +464,10 @@ def main(pages_file, notion_token, target_db_id, rate_sleep, dry_run, limit, ver
         time.sleep(RATE_SLEEP)
 
     click.echo(f"\nMigration complete. Succeeded: {succeeded}, Failed: {failed}")
+    
+    # Explicitly exit to prevent hanging
+    import sys
+    sys.exit(0)
 
 
 if __name__ == "__main__":
