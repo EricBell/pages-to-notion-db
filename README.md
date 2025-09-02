@@ -27,13 +27,20 @@ pip install notion-client requests python-dotenv click
 
 ### Environment Variables
 
-Create a `.env` file in the project directory:
+1. Copy the example environment file:
+```bash
+cp env.example .env
+```
+
+2. Edit the `.env` file with your actual values:
 
 ```env
 NOTION_TOKEN=your_notion_integration_token_here
 TARGET_DB_ID=your_target_database_id_here
 RATE_SLEEP=0.35
 ```
+
+**Note**: The `env.example` file is provided as a template showing all required environment variables with placeholder values.
 
 ### Database Setup
 
